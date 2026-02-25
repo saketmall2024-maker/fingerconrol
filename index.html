@@ -10,19 +10,24 @@ body {
   overflow:hidden;
   background:black;
 }
+
 video, canvas {
   position:absolute;
   width:100vw;
   height:100vh;
   object-fit:cover;
 }
+
 #counter {
   position:absolute;
   top:20px;
-  left:20px;
-  font-size:40px;
-  color:lime;
+  left:0;
+  width:100%;
+  text-align:center;
+  font-size:48px;
   font-weight:bold;
+  color:lime;
+  text-shadow: 0 0 15px black;
 }
 </style>
 </head>
@@ -36,7 +41,7 @@ video, canvas {
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
 <script>
-const ESP_IP = "http://192.168.0.102/";  // 🔥 PUT YOUR ESP IP HERE
+const ESP_IP = "http://192.168.1.XXX/";  // PUT YOUR ESP IP HERE
 
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
@@ -45,17 +50,25 @@ const counterText = document.getElementById("counter");
 
 let lastSent = -1;
 
-// Start camera
-navigator.mediaDevices.getUserMedia({video:true})
-.then(stream => {
-    video.srcObject = stream;
+// 🔥 BACK CAMERA (environment)
+navigator.mediaDevices.getUserMedia({
+  video: {
+    facingMode: { exact: "environment" }
+  }
 })
-.catch(err => alert("Camera error: " + err));
+.then(stream => {
+  video.srcObject = stream;
+})
+.catch(() => {
+  // fallback if exact fails
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream => video.srcObject = stream);
+});
 
 video.addEventListener("loadeddata", () => {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    hands.send({image: video});
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  hands.send({image: video});
 });
 
 const hands = new Hands({
@@ -69,15 +82,16 @@ hands.setOptions({
 });
 
 hands.onResults(results => {
+
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
   let fingerCount = 0;
 
   if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0){
+
     const landmarks = results.multiHandLandmarks[0];
 
-    // Draw hand
     drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {color:'#00FF00', lineWidth:2});
     drawLandmarks(ctx, landmarks, {color:'#FF0000', lineWidth:1});
 
@@ -99,10 +113,9 @@ hands.onResults(results => {
 
   counterText.innerText = "Fingers: " + fingerCount;
 
-  // Send only if changed
+  // Send to ESP only if changed
   if(fingerCount !== lastSent){
-    fetch(ESP_IP + fingerCount)
-      .catch(()=>{});
+    fetch(ESP_IP + fingerCount).catch(()=>{});
     lastSent = fingerCount;
   }
 

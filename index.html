@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finger Count → ESP32</title>
+
+<style>
+body {
+  margin:0;
+  overflow:hidden;
+  background:black;
+}
+video, canvas {
+  position:absolute;
+  width:100vw;
+  height:100vh;
+  object-fit:cover;
+}
+#counter {
+  position:absolute;
+  top:20px;
+  left:20px;
+  font-size:40px;
+  color:lime;
+  font-weight:bold;
+}
+</style>
+</head>
+<body>
+
+<div id="counter">Fingers: 0</div>
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+<script>
+const ESP_IP = "http://192.168.1.XXX/";  // 🔥 PUT YOUR ESP IP HERE
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const counterText = document.getElementById("counter");
+
+let lastSent = -1;
+
+// Start camera
+navigator.mediaDevices.getUserMedia({video:true})
+.then(stream => {
+    video.srcObject = stream;
+})
+.catch(err => alert("Camera error: " + err));
+
+video.addEventListener("loadeddata", () => {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    hands.send({image: video});
+});
+
+const hands = new Hands({
+  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+  maxNumHands: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
+
+hands.onResults(results => {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+
+  let fingerCount = 0;
+
+  if(results.multiHandLandmarks && results.multiHandLandmarks.length > 0){
+    const landmarks = results.multiHandLandmarks[0];
+
+    // Draw hand
+    drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {color:'#00FF00', lineWidth:2});
+    drawLandmarks(ctx, landmarks, {color:'#FF0000', lineWidth:1});
+
+    // Thumb
+    if(landmarks[4].x < landmarks[3].x){
+      fingerCount++;
+    }
+
+    // Other fingers
+    const tips = [8,12,16,20];
+    const pips = [6,10,14,18];
+
+    for(let i=0;i<4;i++){
+      if(landmarks[tips[i]].y < landmarks[pips[i]].y){
+        fingerCount++;
+      }
+    }
+  }
+
+  counterText.innerText = "Fingers: " + fingerCount;
+
+  // Send only if changed
+  if(fingerCount !== lastSent){
+    fetch(ESP_IP + fingerCount)
+      .catch(()=>{});
+    lastSent = fingerCount;
+  }
+
+  hands.send({image: video});
+});
+</script>
+
+</body>
+</html>
